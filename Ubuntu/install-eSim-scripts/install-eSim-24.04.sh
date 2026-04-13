@@ -161,7 +161,15 @@ function installKicad
                 exit 0
             fi
         fi
-
+    elif [[ "$ubuntu_version" == "25.04" ]]; then
+        echo "Ubuntu 25.04 detected."
+        echo "Using distro KiCad package instead of PPA due to libgit2 dependency mismatch."
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends kicad kicad-footprints kicad-libraries kicad-symbols kicad-templates
+        echo "KiCad installation completed successfully!"
+        return 0
+    
+    
     else
         kicadppa="kicad/kicad-6.0-releases"
     fi
@@ -249,7 +257,7 @@ function installDependency
     pip3 install PyQt5  
 
     echo "Installing volare"
-    sudo apt-get xz-utils
+    sudo apt-get install -y xz-utils
     pip3 install volare
 }
 
