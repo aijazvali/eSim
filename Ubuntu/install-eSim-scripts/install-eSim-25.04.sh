@@ -25,9 +25,24 @@
 # All variables goes here
 config_dir="$HOME/.esim"
 config_file="config.ini"
-eSim_Home=`pwd`
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+eSim_Home="$(pwd)"
 ngspiceFlag=0
 ubuntu_version=$(lsb_release -rs 2>/dev/null || awk -F= '/^VERSION_ID=/{gsub(/"/, "", $2); print $2}' /etc/os-release)
+
+# The installer may be run either from a packaged eSim release root or from
+# this repository's Ubuntu/ installer directory. Prefer the nearest directory
+# that actually contains the release payload.
+for candidate in "$(pwd)" "$script_dir/.." "$script_dir/../.."; do
+    if candidate_dir="$(cd "$candidate" 2>/dev/null && pwd)"; then
+        if [ -e "$candidate_dir/nghdl.zip" ] || [ -e "$candidate_dir/library/kicadLibrary.tar.xz" ] || [ -e "$candidate_dir/src/frontEnd/Application.py" ]; then
+            eSim_Home="$candidate_dir"
+            break
+        fi
+    fi
+done
+
+cd "$eSim_Home" || exit 1
 
 ## All Functions goes here
 
@@ -214,7 +229,13 @@ function preflightInstallPayload
     done
 
     if [ "$missing" -ne 0 ]; then
-        die "Run the installer from a complete eSim release directory. The installer-only branch does not contain the runtime payload files listed above."
+        echo "Checked eSim release directory: $eSim_Home"
+        echo
+        echo "This usually means you are running from an installer-only checkout."
+        echo "Use a complete eSim release folder, or copy these installer files into the release root:"
+        echo "  install-eSim.sh"
+        echo "  install-eSim-scripts/"
+        die "The eSim runtime payload is missing, so installation cannot continue."
     fi
 }
 
@@ -293,16 +314,23 @@ function prepareNghdlForUbuntu2504
         s/\bpython3-distutils\b/python3-setuptools/g;
         s/\blibcanberra-gtk-module\s+//g;
         s/\blibcanberra-gtk-module\b/libcanberra-gtk3-module/g;
+        s#^\s*\./configure --with-llvm-config=.*$#    CC=clang-18 CXX=clang++-18 ./configure --with-llvm-config="$llvm_config"#m;
+        s#^\s*make -j\$\(nproc\)\s*$#    make CC=clang-18 CXX=clang++-18 -j\$(nproc)#m;
         s/--with-llvm-config(?!-)(=\S+)?/--with-llvm-config=\/usr\/bin\/llvm-config-18/g;
         s/(?<!--with-)\bllvm-config\b(?!-18)/llvm-config-18/g;
         s/\bllvm-dev\b/llvm-18-dev/g;
         s/\bllvm\b(?!-)/llvm-18/g;
-        s/\bclang\b(?!-)/clang-18/g;
+        s/\bclang\+\+(?!-18)/clang++-18/g;
+        s/\bclang\b(?![-+])/clang-18/g;
     ' "$target_script"
 
     enableUniverse
     aptUpdate
     sudo apt-get install -y llvm-18 llvm-18-dev clang-18 libcanberra-gtk3-module python3-setuptools
+
+    if ! command -v clang++-18 >/dev/null 2>&1; then
+        die "clang++-18 was not found after installing clang-18. Please check the Ubuntu clang-18 package installation."
+    fi
 }
 
 
