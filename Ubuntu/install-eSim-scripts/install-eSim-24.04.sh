@@ -41,22 +41,18 @@ error_exit()
 
 function createConfigFile
 {
-
-    # Creating config.ini file and adding configuration information
-    # Check if config file is present
-    if [ -d $config_dir ];then
-        rm $config_dir/$config_file && touch $config_dir/$config_file
-    else
-        mkdir $config_dir && touch $config_dir/$config_file
-    fi
+    # Create or replace config.ini without failing when ~/.esim exists but
+    # config.ini does not (a common state after an interrupted install).
+    mkdir -p "$config_dir"
+    : > "$config_dir/$config_file"
     
-    echo "[eSim]" >> $config_dir/$config_file
-    echo "eSim_HOME = $eSim_Home" >> $config_dir/$config_file
-    echo "LICENSE = %(eSim_HOME)s/LICENSE" >> $config_dir/$config_file
-    echo "KicadLib = %(eSim_HOME)s/library/kicadLibrary.tar.xz" >> $config_dir/$config_file
-    echo "IMAGES = %(eSim_HOME)s/images" >> $config_dir/$config_file
-    echo "VERSION = %(eSim_HOME)s/VERSION" >> $config_dir/$config_file
-    echo "MODELICA_MAP_JSON = %(eSim_HOME)s/library/ngspicetoModelica/Mapping.json" >> $config_dir/$config_file
+    echo "[eSim]" >> "$config_dir/$config_file"
+    echo "eSim_HOME = $eSim_Home" >> "$config_dir/$config_file"
+    echo "LICENSE = %(eSim_HOME)s/LICENSE" >> "$config_dir/$config_file"
+    echo "KicadLib = %(eSim_HOME)s/library/kicadLibrary.tar.xz" >> "$config_dir/$config_file"
+    echo "IMAGES = %(eSim_HOME)s/images" >> "$config_dir/$config_file"
+    echo "VERSION = %(eSim_HOME)s/VERSION" >> "$config_dir/$config_file"
+    echo "MODELICA_MAP_JSON = %(eSim_HOME)s/library/ngspicetoModelica/Mapping.json" >> "$config_dir/$config_file"
    
 }
 
@@ -88,44 +84,21 @@ function installSky130Pdk
 
     echo "Installing SKY130 PDK......................"
 
-    
+    # The official eSim 2.5 archive already contains the tested PDK payload.
+    tar -xJf library/sky130_fd_pr.tar.xz
+
     # Remove any previous sky130-fd-pdr instance, if any
     sudo rm -rf /usr/share/local/sky130_fd_pr
-    #installing sky130
-    volare enable --pdk sky130 --pdk-root /usr/share/local/ 0fe599b2afb6708d281543108caf8310912f54af
+
     # Copy SKY130 library
     echo "Copying SKY130 PDK........................."
 
     sudo mkdir -p /usr/share/local/
-    sudo mv /usr/share/local/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_pr /usr/share/local/
-    rm -rf /usr/share/local/volare/
+    sudo mv sky130_fd_pr /usr/share/local/
 
     # Change ownership from root to the user
     sudo chown -R $USER:$USER /usr/share/local/sky130_fd_pr/
 
-}
-
-function installIhpPdk
-{
-    echo -n "Do you want to install IHP Open PDK for analog IC design? (y/n): "
-    read installIhp
-    
-    if [ "$installIhp" == "y" -o "$installIhp" == "Y" ]; then
-        echo "Installing IHP Open PDK........................"
-        
-        if [ -f "ihp/ihp-install-script.sh" ]; then
-            cd ihp/
-            chmod +x ihp-install-script.sh
-            trap "" ERR
-            ./ihp-install-script.sh --install
-            trap error_exit ERR
-            cd ../
-        else
-            echo "IHP install script not found. Skipping..."
-        fi
-    else
-        echo "Skipping IHP Open PDK installation"
-    fi
 }
 
 
@@ -192,7 +165,6 @@ function installKicad
 
 function installDependency
 {
-
     set +e      # Temporary disable exit on error
     trap "" ERR # Do not trap on error of any command
 
@@ -202,63 +174,37 @@ function installDependency
     
     set -e      # Re-enable exit on error
     trap error_exit ERR
-    
-    echo "Instaling virtualenv......................."
-    sudo apt install python3-virtualenv
-   
-    echo "Creating virtual environment to isolate packages "
-    virtualenv $config_dir/env
-    
+
+    echo "Installing system prerequisites............"
+    sudo apt-get install -y python3-venv python3-pip xterm xz-utils
+
+    echo "Creating virtual environment to isolate packages"
+    rm -rf "$config_dir/env"
+    python3 -m venv "$config_dir/env"
+
     echo "Starting the virtual env..................."
-    source $config_dir/env/bin/activate
+    source "$config_dir/env/bin/activate"
 
     echo "Upgrading Pip.............................."
-    pip install --upgrade pip
-    
-    echo "Installing Xterm..........................."
-    sudo apt-get install -y xterm
-    
-    echo "Installing Psutil.........................."
-    sudo apt-get install -y python3-psutil
-    
-    echo "Installing PyQt5..........................."
-    sudo apt-get install -y python3-pyqt5
-
-    echo "Installing Matplotlib......................"
-    sudo apt-get install -y python3-matplotlib
-
-    echo "Installing Setuptools..................."
-    sudo apt-get install -y python3-setuptools
-
-    # Install NgVeri Depedencies
-    echo "Installing Pip3............................"
-    sudo apt install -y python3-pip
+    python -m pip install --upgrade pip setuptools wheel
 
     echo "Installing Watchdog........................"
-    pip3 install watchdog
+    python -m pip install watchdog psutil
 
-    echo "Installing Hdlparse........................"
-    pip3 install --upgrade https://github.com/hdl/pyhdlparser/tarball/master
+    echo "Installing maintained Hdlparse source......"
+    python -m pip install --upgrade https://github.com/hdl/pyhdlparser/tarball/master
 
     echo "Installing Makerchip......................."
-    pip3 install makerchip-app
+    python -m pip install makerchip-app
 
     echo "Installing SandPiper Saas.................."
-    pip3 install sandpiper-saas
+    python -m pip install sandpiper-saas
 
-   
-    echo "Installing Hdlparse......................"
-    pip3 install hdlparse
+    echo "Installing Matplotlib......................"
+    python -m pip install matplotlib
 
-    echo "Installing matplotlib................"
-    pip3 install matplotlib
-
-    echo "Installing PyQt5............."
-    pip3 install PyQt5  
-
-    echo "Installing volare"
-    sudo apt-get install -y xz-utils
-    pip3 install volare
+    echo "Installing PyQt5..........................."
+    python -m pip install PyQt5
 }
 
 
@@ -268,15 +214,14 @@ function copyKicadLibrary
     #Extract custom KiCad Library
     tar -xJf library/kicadLibrary.tar.xz
 
-    if [ -d ~/.config/kicad/6.0 ];then
-        echo "kicad config folder already exists"
-    else 
-        echo ".config/kicad/6.0 does not exist"
-        mkdir -p ~/.config/kicad/6.0
-    fi
+    installed_kicad_major=$(dpkg-query -W -f='${Version}' kicad 2>/dev/null | grep -oE '^[0-9]+' || true)
+    installed_kicad_major="${installed_kicad_major:-8}"
+    kicad_config_dir="$HOME/.config/kicad/${installed_kicad_major}.0"
+    mkdir -p "$kicad_config_dir"
+    echo "Using KiCad configuration directory: $kicad_config_dir"
 
     # Copy symbol table for eSim custom symbols 
-    cp kicadLibrary/template/sym-lib-table ~/.config/kicad/6.0/
+    cp kicadLibrary/template/sym-lib-table "$kicad_config_dir/"
     echo "symbol table copied in the directory"
 
     # Copy KiCad symbols made for eSim
@@ -432,7 +377,6 @@ if [ $option == "--install" ];then
     copyKicadLibrary
     installNghdl
     installSky130Pdk
-    installIhpPdk
     createDesktopStartScript
 
     if [ $? -ne 0 ];then
@@ -463,14 +407,6 @@ elif [ $option == "--uninstall" ];then
         echo "Removing SKY130 PDK......................"
         sudo rm -R /usr/share/local/sky130_fd_pr
 
-        echo "Removing IHP Open PDK...................."
-        if [ -f "ihp/install-ihp-openpdk.sh" ]; then
-            cd ihp/
-            chmod +x install-ihp-openpdk.sh
-            ./install-ihp-openpdk.sh --uninstall
-            cd ../
-        fi
-
         echo "Removing NGHDL..........................."
         rm -rf library/modelParamXML/Nghdl/*
         rm -rf library/modelParamXML/Ngveri/*
@@ -500,3 +436,4 @@ else
     echo "--install"
     echo "--uninstall"
 fi
+
