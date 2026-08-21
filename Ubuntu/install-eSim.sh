@@ -20,10 +20,25 @@
 #      REVISION: ---
 #=============================================================================
 
-# Function to detect Ubuntu version and full version string
+# Function to detect Ubuntu version without depending on lsb_release.
 get_ubuntu_version() {
-    VERSION_ID=$(grep "^VERSION_ID" /etc/os-release | cut -d '"' -f 2)
-    FULL_VERSION=$(lsb_release -d | grep -oP '\d+\.\d+(\.\d+)?')
+    local os_release_file="${ESIM_OS_RELEASE_FILE:-/etc/os-release}"
+
+    if [[ ! -r "$os_release_file" ]]; then
+        echo "Unable to read Ubuntu release information: $os_release_file" >&2
+        exit 1
+    fi
+
+    # shellcheck disable=SC1090
+    source "$os_release_file"
+    VERSION_ID="${VERSION_ID:-}"
+    FULL_VERSION="${VERSION:-Ubuntu $VERSION_ID}"
+
+    if [[ -z "$VERSION_ID" ]]; then
+        echo "VERSION_ID is missing from $os_release_file" >&2
+        exit 1
+    fi
+
     echo "Detected Ubuntu Version: $FULL_VERSION"
 }
 
@@ -82,3 +97,4 @@ fi
 
 get_ubuntu_version
 run_version_script
+
