@@ -1,0 +1,49 @@
+name: Ubuntu 25.04 installer smoke test
+
+on:
+  push:
+    branches:
+      - installers
+    paths:
+      - "Ubuntu/**"
+      - ".github/workflows/ubuntu-25.04-installer-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-24.04
+    container: ubuntu:25.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Install test prerequisites
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            bash ca-certificates git python3 python3-pip python3-venv xz-utils
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run installer smoke tests
+        shell: bash
+        run: bash Ubuntu/tests/test-ubuntu-25.04-installer.sh
+
+      - name: Verify Ubuntu KiCad dependency resolution
+        shell: bash
+        run: |
+          apt-get install --simulate -y --no-install-recommends \
+            kicad kicad-footprints kicad-libraries kicad-symbols kicad-templates
+
+      - name: Verify maintained Hdlparse on Python 3.13
+        shell: bash
+        run: |
+          python3 -m venv /tmp/esim-dependency-check
+          /tmp/esim-dependency-check/bin/python -m pip install --upgrade pip
+          /tmp/esim-dependency-check/bin/python -m pip install \
+            https://github.com/hdl/pyhdlparser/tarball/master
+          /tmp/esim-dependency-check/bin/python -c "import hdlparse.verilog_parser"
+
