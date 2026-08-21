@@ -436,4 +436,3 @@ else
     echo "--install"
     echo "--uninstall"
 fi
-
