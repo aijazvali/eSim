@@ -39,4 +39,3 @@ if grep -Eq 'pip3 install hdlparse|python -m pip install hdlparse' "$dependency_
 fi
 
 echo "Ubuntu 25.04 dispatcher and installer smoke tests passed."
-
