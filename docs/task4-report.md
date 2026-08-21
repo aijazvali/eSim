@@ -9,7 +9,7 @@
 
 ## Executive summary
 
-This work investigated the eSim 2.5 Ubuntu installer on Ubuntu 25.04 (Plucky Puffin), reproduced installation failures, and implemented focused fixes in the `installers` branch. Eight issues were documented and fixed. The most important changes are:
+This work investigated the eSim 2.5 Ubuntu installer on Ubuntu 25.04 (Plucky Puffin), reproduced installation failures, and implemented focused fixes in the `installers` branch. Eleven issues were documented and fixed. The corrected installer was then run end to end in a clean Ubuntu 25.04 desktop virtual machine, and eSim 2.5 was launched successfully. The most important changes are:
 
 - Ubuntu 25.04 is now recognized by the top-level installer without requiring `lsb_release`.
 - Ubuntu 25.04 uses the distribution-provided KiCad 8.0.8 packages instead of an incompatible PPA build.
@@ -17,6 +17,9 @@ This work investigated the eSim 2.5 Ubuntu installer on Ubuntu 25.04 (Plucky Puf
 - The obsolete PyPI `hdlparse` release, which fails with modern packaging tools, is replaced by the maintained upstream source.
 - The eSim symbol table is written to the active KiCad major-version directory instead of the obsolete KiCad 6.0 directory.
 - Interrupted installations can be rerun without failing while recreating `~/.esim/config.ini`.
+- Ubuntu 25.04's nested NGHDL installer uses LLVM 18, the newest LLVM release supported by GHDL 4.1, rather than the distribution's incompatible LLVM 20 default.
+- The retired GTK2 Canberra package is no longer requested.
+- The launcher installs the missing XCB runtime and selects the compatible Qt XCB backend under GNOME/Wayland.
 
 The repository also includes a repeatable Ubuntu 25.04 CI smoke test. This test checks the installer dispatcher, shell syntax, KiCad dependency resolution, and the maintained Hdlparse installation on Python 3.13.
 
@@ -67,9 +70,12 @@ This distinction matters: the `installers` branch stores packaging scripts, whil
 | Git | 2.48.1 |
 | GCC | 14.2.0 |
 | Make | 4.4.1 |
+| Desktop test environment | Hyper-V Generation 2 virtual machine |
+| VM resources | 4 virtual CPUs, 8 GB RAM, 60 GB virtual disk |
+| Installation media | Official `ubuntu-25.04-desktop-amd64.iso` |
 | Automated execution environment | Official `ubuntu:25.04` container on a GitHub-hosted runner |
 
-No Ubuntu desktop virtual machine was available in the working environment. Desktop launch and interactive schematic validation are therefore called out separately as an acceptance-test limitation rather than represented as completed evidence.
+The complete installer was executed in the desktop VM on 22 August 2026 using the verified official eSim 2.5 archive. Installation reached `eSim Installed Successfully`, the plain `esim` launcher opened the workspace selector, and the eSim 2.5 main window rendered successfully.
 
 ### 3.2 Repeatable automated validation
 
@@ -99,6 +105,7 @@ The final automated run completed successfully on commit `f9e81f7` ([workflow ev
 6. Applied one focused change at a time.
 7. Repeated syntax, dispatch, dependency, and package-resolution tests.
 8. Added automated smoke tests so future changes can be checked on Ubuntu 25.04.
+9. Installed the full eSim stack in the Ubuntu 25.04 desktop VM and launched the GUI from the installed `/usr/bin/esim` entry point.
 
 ## 5. Issue index
 
@@ -112,6 +119,9 @@ The final automated run completed successfully on commit `f9e81f7` ([workflow ev
 | ESIM-25-06 | Obsolete PyPI `hdlparse` is installed after the maintained source | Installation aborts with `use_2to3 is invalid` | Fixed |
 | ESIM-25-07 | KiCad symbol table is copied to `~/.config/kicad/6.0` | KiCad 8 does not load eSim symbols from the intended table | Fixed |
 | ESIM-25-08 | Recreating `config.ini` fails after an interrupted installation | Installer is not safely rerunnable | Fixed |
+| ESIM-25-09 | Nested NGHDL dispatcher rejects Ubuntu 25.04 | NGHDL installation stops during the full installer run | Fixed |
+| ESIM-25-10 | Ubuntu 25.04 defaults to LLVM 20 and no longer provides the GTK2 Canberra module | GHDL 4.1 build fails and the package transaction cannot resolve | Fixed |
+| ESIM-25-11 | PyQt5 GUI lacks `libxcb-xinerama0` and aborts on the bundled Wayland plugin | `esim` terminates before the main window opens | Fixed |
 
 ## 6. Detailed findings and fixes
 
@@ -261,6 +271,34 @@ mkdir -p "$config_dir"
 
 The configuration file is created or replaced safely on both clean and interrupted installations.
 
+### ESIM-25-09 and ESIM-25-10: NGHDL dispatcher and toolchain incompatibilities
+
+**Observed behavior**
+
+The complete installer reached the bundled NGHDL package, whose own dispatcher did not recognize Ubuntu 25.04. Calling its 24.04 implementation then selected Ubuntu 25.04's default LLVM 20 packages, but GHDL 4.1 supports LLVM only through 18.1. The same script also requested the retired GTK2 `libcanberra-gtk-module` package.
+
+**Fix**
+
+For Ubuntu 25.04, the eSim installer invokes the compatible nested 24.04 implementation, patches that temporary extracted script to install `llvm-18` and `llvm-18-dev`, selects `/usr/bin/llvm-config-18`, and retains only `libcanberra-gtk3-module`.
+
+**Result**
+
+The full run built GHDL 4.1.0, NGHDL, Verilator 4.210, and the customized ngspice stack successfully.
+
+### ESIM-25-11: PyQt platform plugin failure on GNOME/Wayland
+
+**Observed behavior**
+
+The first `esim` launch aborted with Qt's platform-plugin error. Dependency inspection of PyQt5's `libqxcb.so` showed `libxcb-xinerama.so.0 => not found`; selecting the bundled Wayland plugin also aborted before the application window was initialized.
+
+**Fix**
+
+Install `libxcb-xinerama0` with the other system prerequisites and export `QT_QPA_PLATFORM=xcb` in the generated `/usr/bin/esim` launcher.
+
+**Result**
+
+The plain `esim` command now opens the workspace prompt and eSim 2.5 main window under Ubuntu 25.04's default GNOME/Wayland session through XWayland.
+
 ## 7. Environmental cleanup noted during testing
 
 A failed PPA attempt can leave a KiCad source file under `/etc/apt/sources.list.d/`. Changing the installer does not remove repository entries already created by an earlier run. During troubleshooting, the stale KiCad PPA entry was removed before repeating `apt update`.
@@ -272,7 +310,7 @@ This cleanup is documented separately and is not counted as an installer code fi
 | File | Purpose |
 | --- | --- |
 | `Ubuntu/install-eSim.sh` | Robust OS detection and Ubuntu 25.04 dispatch |
-| `Ubuntu/install-eSim-scripts/install-eSim-24.04.sh` | Plucky KiCad path, Python dependencies, Hdlparse, KiCad config, rerun safety |
+| `Ubuntu/install-eSim-scripts/install-eSim-24.04.sh` | Plucky KiCad path, Python dependencies, Hdlparse, NGHDL/LLVM compatibility, Qt launcher, KiCad config, rerun safety |
 | `Ubuntu/tests/test-ubuntu-25.04-installer.sh` | Dispatcher and shell smoke tests |
 | `.github/workflows/ubuntu-25.04-installer-smoke.yml` | Automated Ubuntu 25.04 validation |
 | `.gitattributes` | Enforce Linux line endings for shell and workflow files |
@@ -290,6 +328,13 @@ This cleanup is documented separately and is not counted as an installer code fi
 | Maintained Hdlparse source installation | Pass |
 | Ubuntu KiCad 8.0.8 package metadata and `libgit2-1.9` dependency confirmed | Pass |
 | Automated Ubuntu 25.04 workflow | Pass — [run 32473693730](https://github.com/aijazvali/eSim/actions/runs/32473693730) |
+| Full installer in Ubuntu 25.04 desktop VM | Pass — installer reported success |
+| eSim launcher and main-window rendering | Pass — plain `esim` command |
+| Installed KiCad | Pass — 8.0.8 |
+| Installed GHDL | Pass — 4.1.0 |
+| Installed Verilator | Pass — 4.210 |
+| Installed ngspice | Pass — 35 |
+| SKY130 PDK payload | Pass — 670 MB installed |
 
 Local smoke-test output:
 
@@ -330,8 +375,8 @@ Open the fork's [GitHub Actions page](https://github.com/aijazvali/eSim/actions)
 
 ## 11. Limitations and next steps
 
-- The CI job is intentionally a dependency and installer-logic smoke test; a headless container cannot validate desktop rendering or interactive schematic editing.
-- A final acceptance run should open eSim and KiCad in an Ubuntu 25.04 desktop VM and capture screenshots of the eSim main window, KiCad integration, and a sample simulation.
+- The CI job is intentionally a dependency and installer-logic smoke test; desktop rendering was validated separately in the Hyper-V VM.
+- The acceptance run validated installation and eSim startup. A representative schematic simulation can be added as a deeper functional regression test.
 - For long-term maintainability, a dedicated `install-eSim-25.04.sh` can be introduced if future Plucky-specific logic grows beyond the current targeted branch.
 - Dependency versions should eventually be pinned or recorded in a lock file to reduce changes caused by upstream Python packages.
 
@@ -339,4 +384,5 @@ Open the fork's [GitHub Actions page](https://github.com/aijazvali/eSim/actions)
 
 The original eSim 2.5 installer did not recognize Ubuntu 25.04 and encountered high-impact KiCad and Python dependency problems. The corrected installer now selects a coherent Plucky KiCad package set, uses a single Python environment, avoids the broken Hdlparse release, places KiCad configuration in the correct version directory, and supports safe reruns.
 
-Eight issues were documented and fixed. The repository includes both the implementation and repeatable automated checks, so another user can understand the failures, reproduce the methodology, and verify the fixes.
+Eleven issues were documented and fixed. The repository includes the implementation, repeatable automated checks, and evidence from a complete Ubuntu 25.04 desktop installation and GUI launch, so another user can understand the failures, reproduce the methodology, and verify the fixes.
+

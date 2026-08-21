@@ -68,7 +68,29 @@ function installNghdl
     # Do not trap on error of any command. Let NGHDL script handle its own errors.
     trap "" ERR
 
-    ./install-nghdl.sh --install       # Install NGHDL
+    # The NGHDL bundle has its own release dispatcher, which does not yet
+    # recognize Ubuntu 25.04. Its 24.04 implementation uses dependencies that
+    # are also provided by 25.04, so bypass only that stale dispatcher.
+    nghdl_ubuntu_version=$(. /etc/os-release && printf '%s' "$VERSION_ID")
+    if [[ "$nghdl_ubuntu_version" == "25.04" ]]; then
+        echo "Ubuntu 25.04 detected. Using the NGHDL 24.04 installer."
+        nghdl_installer="install-nghdl-scripts/install-nghdl-24.04.sh"
+
+        # GHDL 4.1 supports LLVM through 18.1, while Ubuntu 25.04 defaults to
+        # LLVM 20. Pin only this build to the supported LLVM 18 packages.
+        # Ubuntu 25.04 also retired the GTK2 Canberra module. NGHDL only uses
+        # it to avoid optional GTK sound-module warnings, and the GTK3 module
+        # remains available in the distribution repository.
+        sed -i \
+            -e 's/sudo apt install -y llvm llvm-dev/sudo apt install -y llvm-18 llvm-18-dev/' \
+            -e 's#--with-llvm-config=/usr/bin/llvm-config#--with-llvm-config=/usr/bin/llvm-config-18#' \
+            -e 's/sudo apt install -y libcanberra-gtk-module libcanberra-gtk3-module/sudo apt install -y libcanberra-gtk3-module/' \
+            "$nghdl_installer"
+
+        bash "$nghdl_installer" --install
+    else
+        ./install-nghdl.sh --install
+    fi
         
     # Set trap again to error_exit function to exit on errors
     trap error_exit ERR
@@ -176,7 +198,7 @@ function installDependency
     trap error_exit ERR
 
     echo "Installing system prerequisites............"
-    sudo apt-get install -y python3-venv python3-pip xterm xz-utils
+    sudo apt-get install -y python3-venv python3-pip xterm xz-utils libxcb-xinerama0
 
     echo "Creating virtual environment to isolate packages"
     rm -rf "$config_dir/env"
@@ -249,6 +271,9 @@ function createDesktopStartScript
     echo '#!/bin/bash' > esim-start.sh
     echo "cd $eSim_Home/src/frontEnd" >> esim-start.sh
     echo "source $config_dir/env/bin/activate" >> esim-start.sh
+    # PyQt5's bundled Wayland plugin aborts on Ubuntu 25.04. Use the
+    # XWayland-compatible xcb backend, whose runtime library is installed above.
+    echo 'export QT_QPA_PLATFORM=xcb' >> esim-start.sh
     echo "python3 Application.py" >> esim-start.sh
 
     # Make it executable
@@ -436,3 +461,4 @@ else
     echo "--install"
     echo "--uninstall"
 fi
+

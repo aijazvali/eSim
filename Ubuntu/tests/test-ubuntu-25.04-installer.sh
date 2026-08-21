@@ -38,4 +38,14 @@ if grep -Eq 'pip3 install hdlparse|python -m pip install hdlparse' "$dependency_
     exit 1
 fi
 
+grep -q 'nghdl_ubuntu_version=.*os-release' "$dependency_script"
+grep -q 'nghdl_installer="install-nghdl-scripts/install-nghdl-24.04.sh"' "$dependency_script"
+grep -q 'bash "$nghdl_installer" --install' "$dependency_script"
+grep -q 'Ubuntu 25.04 also retired the GTK2 Canberra module' "$dependency_script"
+grep -q 'llvm-18 llvm-18-dev' "$dependency_script"
+grep -q 'llvm-config-18' "$dependency_script"
+grep -q 'libxcb-xinerama0' "$dependency_script"
+grep -q 'export QT_QPA_PLATFORM=xcb' "$dependency_script"
+
 echo "Ubuntu 25.04 dispatcher and installer smoke tests passed."
+
