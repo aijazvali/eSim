@@ -87,7 +87,7 @@ The branch includes `.github/workflows/ubuntu-25.04-installer-smoke.yml`, which 
 - Creation of a Python 3.13 virtual environment.
 - Installation and import of maintained Hdlparse source.
 
-The final automated run completed successfully on commit `f9e81f7` ([workflow evidence](https://github.com/aijazvali/eSim/actions/runs/32473693730)).
+The final automated run completed successfully on commit `b4f785b` ([workflow evidence](https://github.com/aijazvali/eSim/actions/runs/32525366733)).
 
 ## 4. Methodology
 
@@ -327,7 +327,7 @@ This cleanup is documented separately and is not counted as an installer code fi
 | Obsolete PyPI Hdlparse failure reproduced | Pass |
 | Maintained Hdlparse source installation | Pass |
 | Ubuntu KiCad 8.0.8 package metadata and `libgit2-1.9` dependency confirmed | Pass |
-| Automated Ubuntu 25.04 workflow | Pass — [run 32473693730](https://github.com/aijazvali/eSim/actions/runs/32473693730) |
+| Automated Ubuntu 25.04 workflow | Pass — [run 32525366733](https://github.com/aijazvali/eSim/actions/runs/32525366733) |
 | Full installer in Ubuntu 25.04 desktop VM | Pass — installer reported success |
 | eSim launcher and main-window rendering | Pass — plain `esim` command |
 | Installed KiCad | Pass — 8.0.8 |
